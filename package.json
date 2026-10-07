@@ -1,6 +1,6 @@
 {
   "name": "@xt230/dsh-ppt-master",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Declares a PPT Master agent preset (skill + interpreter tool, scoped to that preset) and manages the Python interpreter and projects root it runs with through the plugin's own Config",
   "type": "module",
   "license": "MIT",
