@@ -105,11 +105,46 @@ writes the official configuration through the `form` the Plugins page hands it. 
 ### Development
 
 ```bash
-node dev/selfcheck.mjs        # schema, skill parsing, section assembly, probe, validation
+node dev/selfcheck.mjs        # everything: portable checks + this machine
+node dev/selfcheck.mjs --ci   # portable checks only (what CI runs)
 node dev/set-name.mjs --check # the package name is consistent in every place it is hard-coded
+node dev/pack-check.mjs       # the published file list is what we expect
+node dev/session-log.mjs --recent 30   # decode recent session logs (multi-frame zstd)
 ```
 
-`dev/` is not part of the published package.
+The self-check has two groups. **Portable** checks (Config schema, path resolution, the bundle patch parsed
+as real YAML, skill parsing and section assembly against a fixture, a probe run on a system interpreter) need
+no DSH install, no upstream checkout and no skill dependencies, so CI runs exactly those with `--ci`.
+**Environment** checks (the real upstream `SKILL.md` and the real interpreter with its 19 packages) run only
+on a machine that has them; missing preconditions report `skip`, and upstream *wording* differences report
+`warn` rather than failing, because the plugin depends on the file's shape and not on a third party's prose.
+
+### Release
+
+Releases are cut locally and published by CI on the tag:
+
+```bash
+node dev/release.mjs patch      # or minor / major
+```
+
+That verifies the tree (name consistency, `--ci` self-check, packed file list), bumps `package.json`, commits
+`release vX.Y.Z`, tags it, and pushes. `.github/workflows/publish.yml` then runs on the `v*` tag: it checks
+that the tag matches `package.json`, and publishes to npm through **Trusted Publishing (OIDC)** — no
+`NPM_TOKEN` secret, no OTP — attaching provenance and creating the GitHub Release. `--dry-run` runs the
+verification only; `--no-push` stops before pushing.
+
+One-time setup on npm (only once, for this package): the package page → Settings → **Trusted Publisher** →
+GitHub Actions, with Provider `GitHub Actions`, Owner `XT230`, Repository `dsh-ppt-master`, **Workflow
+filename `publish.yml`**, Environment empty. Two consequences worth remembering:
+
+- the configuration names owner, repository and **workflow file**, so renaming any of them breaks publishing
+  until it is updated here;
+- a manual `npm publish` still needs your 2FA code; only the workflow's OIDC exchange is exempt.
+
+Recover a failed run without a new commit: `gh workflow run publish.yml -f tag=vX.Y.Z` (add
+`-f dry_run=true` to package without publishing). Pushing to `main` alone never publishes.
+
+`dev/` and `.github/` are not part of the published package.
 
 ### License
 
@@ -199,11 +234,42 @@ preset 半边。这个拆分是必须的 —— **挂在 preset 里的插件没�
 ### 开发
 
 ```bash
-node dev/selfcheck.mjs        # schema、技能解析、正文装配、探测、校验
+node dev/selfcheck.mjs        # 全量：可移植校验 + 本机环境
+node dev/selfcheck.mjs --ci   # 只跑可移植校验（CI 用的就是这一组）
 node dev/set-name.mjs --check # 包名在所有硬编码处保持一致
+node dev/pack-check.mjs       # 发布包文件清单与预期一致
+node dev/session-log.mjs --recent 30   # 解压最近的会话日志（多帧 zstd）
 ```
 
-`dev/` 不会进入发布包。
+自检分两组。**可移植组**（Config schema、路径解析、用真 YAML 解析 bundle patch、以 fixture 覆盖技能解析
+与正文装配、在系统解释器上跑一次探测）不需要 DSH、不需要上游 checkout、不需要技能依赖，CI 用 `--ci`
+只跑这一组。**环境组**（真实上游 `SKILL.md`、装着 19 个包的真实解释器）只在本机跑；前置缺失时报 `skip`，
+上游**文案**变化报 `warn` 而不算失败 —— 插件依赖的是文件结构，不是第三方技能的措辞。
+
+### 发布
+
+本地打标签、CI 负责发布：
+
+```bash
+node dev/release.mjs patch      # 或 minor / major
+```
+
+它会先校验（包名一致性、`--ci` 自检、发布包文件清单），再改 `package.json`、提交 `release vX.Y.Z`、
+打 tag、推送。随后 `.github/workflows/publish.yml` 在 `v*` tag 上运行：校验 tag 与 `package.json` 一致，
+然后通过 **Trusted Publishing（OIDC）** 发布到 npm —— 不需要 `NPM_TOKEN`、不需要 OTP —— 并附带
+provenance 签名、创建 GitHub Release。`--dry-run` 只校验不动手；`--no-push` 停在推送之前。
+
+npm 侧的一次性配置（本包只需做一次）：包页面 → Settings → **Trusted Publisher** → GitHub Actions，
+填 Provider `GitHub Actions`、Owner `XT230`、Repository `dsh-ppt-master`、**Workflow filename `publish.yml`**、
+Environment 留空。两个要记住的后果：
+
+- 这个配置认 owner / repository / **workflow 文件名**，任一改名都会导致发布报未授权，需回来同步；
+- 手动 `npm publish` 仍然要你的 2FA 验证码，只有 CI 的 OIDC 兑换豁免。
+
+发布失败时无需新提交即可重跑：`gh workflow run publish.yml -f tag=vX.Y.Z`（加 `-f dry_run=true` 则只打包）。
+**只推 main 永远不会发布**。
+
+`dev/` 与 `.github/` 不会进入发布包。
 
 ### 许可证
 
