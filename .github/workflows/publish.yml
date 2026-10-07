@@ -1,0 +1,107 @@
+# Publish to npm when a `v*` tag is pushed.
+#
+# Authentication is npm Trusted Publishing (OIDC): there is no `NPM_TOKEN`
+# secret and no OTP step. GitHub issues a short-lived identity token, npm
+# exchanges it for a publish token scoped to this package, and provenance is
+# attached automatically because both the repository and the package are public.
+#
+# One-time setup on npmjs.com -> the package -> Settings -> Trusted Publisher:
+#   Provider          GitHub Actions
+#   Owner             XT230
+#   Repository        dsh-ppt-master
+#   Workflow filename publish.yml      <- renaming this file breaks publishing
+#   Environment       (leave empty)
+#
+# Recovery for a failed run (no new commit needed):
+#   gh workflow run publish.yml -f tag=v1.2.3      # publish an existing tag
+#   gh workflow run publish.yml -f dry_run=true    # package only
+name: publish
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (defaults to the pushed tag)'
+        required: false
+      dry_run:
+        description: 'Package and verify without publishing'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # create the GitHub Release for the tag
+  id-token: write # OIDC token for npm trusted publishing
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # Trusted publishing requires a GitHub-hosted runner.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          # node 24 bundles npm 11; OIDC needs npm >= 11.5.1. No `registry-url`:
+          # that would inject an empty NODE_AUTH_TOKEN, which OIDC does not need.
+          node-version: 24
+
+      - name: Install
+        run: npm ci
+
+      - name: The tag and package.json must agree
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::tag $TAG does not match package.json version $VERSION"
+            exit 1
+          fi
+          echo "publishing $TAG"
+
+      - name: Self-check (portable)
+        run: node dev/selfcheck.mjs --ci
+
+      - name: Is this version already on npm?
+        id: state
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if npm view "@xt230/dsh-ppt-master@$VERSION" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::@xt230/dsh-ppt-master@$VERSION is already published; skipping publish"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish (OIDC + provenance)
+        if: ${{ steps.state.outputs.published == 'false' && inputs.dry_run != true }}
+        run: npm publish --access public --provenance
+
+      - name: GitHub Release
+        if: ${{ steps.state.outputs.published == 'false' && inputs.dry_run != true }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --generate-notes
+
+      - name: Summary
+        if: ${{ always() }}
+        run: |
+          {
+            echo "### publish (dry_run=${{ inputs.dry_run || 'false' }})"
+            echo
+            echo "| item | value |"
+            echo "| --- | --- |"
+            echo "| tag | \`${{ inputs.tag || github.ref_name }}\` |"
+            echo "| version | \`$(node -p "require('./package.json').version")\` |"
+            echo "| already published | ${{ steps.state.outputs.published || 'n/a' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

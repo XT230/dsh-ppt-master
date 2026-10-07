@@ -1,0 +1,37 @@
+# Verification for every push to a branch and every pull request.
+#
+# No publishing here: `.github/workflows/publish.yml` does that on a `v*` tag.
+# The checks are the portable half of `dev/selfcheck.mjs` — they need no DSH
+# install, no upstream ppt-master checkout and no Python, so they run anywhere.
+name: ci
+
+on:
+  push:
+    branches: ['**']
+    tags-ignore: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install
+        run: npm ci
+
+      - name: Package name is consistent everywhere
+        run: node dev/set-name.mjs --check
+
+      - name: Self-check (portable)
+        run: node dev/selfcheck.mjs --ci
+
+      - name: Packed file list is unchanged
+        run: node dev/pack-check.mjs

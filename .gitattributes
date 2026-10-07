@@ -1,0 +1,19 @@
+# Keep the working tree byte-stable across platforms: the Cordis patch and the
+# locale files are parsed by exact-text tooling on Linux CI, so CRLF checkouts on
+# Windows must not leak into the repository.
+* text=auto eol=lf
+
+*.js    text
+*.mjs   text
+*.json  text
+*.yml   text
+*.yaml  text
+*.md    text
+*.py    text
+*.svg   text
+LICENSE text
+
+*.png   binary
+*.jpg   binary
+*.pptx  binary
+*.zstd  binary

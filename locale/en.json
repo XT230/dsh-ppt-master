@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "PPT Master",
+    "description": "Registers the PPT Master skill and manages the Python interpreter it runs on."
+  }
+}

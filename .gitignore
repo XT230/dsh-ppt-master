@@ -1,0 +1,11 @@
+# Local tooling state — never published, never committed.
+node_modules/
+.npm-cache/
+dev/.tmp/
+dev/.tmp-dsh/
+*.tgz
+
+# Editor / OS state.
+.vscode/
+.DS_Store
+Thumbs.db
