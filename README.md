@@ -34,6 +34,8 @@ dependency that declares `dsh.bundle` is added to the profile's bundle list.
 A package that was installed under a **different name** (or replaced in place) is imported by the running
 DSH process only after a restart: start `dsh web` again, then refresh the page.
 
+Requires DSH `0.2.1-rc.2` or newer; the `0.2.0` line keeps release `1.3.0`.
+
 ### Use the preset
 
 The bundle declares an agent preset named **PPT Master** (roster id `ppt-master`). Pick it for a session
@@ -55,7 +57,9 @@ That split is deliberate — a plugin mounted inside a preset has no editable co
 
 The preset's plugin list is a **verbatim copy of the shipped `standard` preset** plus this plugin's rows,
 because a preset does not inherit another preset. When a dsh release changes `standard`'s list, update
-`cordis.patch.yml` to match.
+`cordis.patch.yml` to match. The copy tracks dsh `0.2.1-rc.2`, which removed the per-child `toolFilter`:
+subagents now compose from this preset, so they see the same tools — including the schedule tools — as the
+session that started them. The fork tool cannot select a separate preset.
 
 ### Configure
 
@@ -181,6 +185,8 @@ dsh plugin --profile web add @xt230/dsh-ppt-master
 **如果这个包之前是以另一个名字安装的**（或原地替换过），运行中的 DSH 进程需要重启才会导入新的名字：
 重新启动 `dsh web`，然后刷新页面。
 
+要求 DSH `0.2.1-rc.2` 或更新版本；`0.2.0` 线请继续使用 `1.3.0`。
+
 ### 用这个预设
 
 bundle 声明了一个名为 **PPT Master** 的 agent preset（花名册 id `ppt-master`）。新建会话时选它（或在已有
@@ -196,7 +202,9 @@ bundle 声明了一个名为 **PPT Master** 的 agent preset（花名册 id `ppt
 preset 半边。这个拆分是必须的 —— **挂在 preset 里的插件没有可编辑的配置表单**。
 
 预设的插件列表是**照抄上游 `standard` 预设**再追加本插件的行（预设不继承另一个预设）。上游改动
-`standard` 列表时，需要同步更新 `cordis.patch.yml`。
+`standard` 列表时，需要同步更新 `cordis.patch.yml`。这份拷贝对齐 dsh `0.2.1-rc.2`：该版本移除了子代理的
+`toolFilter`，子代理改为继承本预设，因此能看到与父会话相同的工具（包括 schedule 工具）；fork 不支持单独
+选择预设。
 
 ### 配置
 

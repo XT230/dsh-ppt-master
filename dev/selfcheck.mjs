@@ -24,6 +24,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isDeepStrictEqual } from 'node:util'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const tmp = join(root, 'dev', '.tmp')
@@ -64,10 +65,14 @@ function parsePatch(text) {
 function insertedEntries(rows) {
   return (Array.isArray(rows) ? rows : []).flatMap((row) => (Array.isArray(row?.insert) ? row.insert : []))
 }
-/** The plugin ids a preset declaration carries. */
-function presetPluginIds(rows) {
+/** The plugin rows a preset declaration carries. */
+function presetPlugins(rows) {
   const declaration = insertedEntries(rows).find((entry) => Array.isArray(entry?.config?.plugins))
-  return (declaration?.config?.plugins ?? []).map((plugin) => plugin?.id)
+  return declaration?.config?.plugins ?? []
+}
+/** A preset's rows including the children of `cordis:group` rows. */
+function flattenPlugins(plugins) {
+  return plugins.flatMap((plugin) => [plugin, ...(Array.isArray(plugin?.config) ? flattenPlugins(plugin.config) : [])])
 }
 let patchRows = null
 let patchError = null
@@ -234,6 +239,19 @@ console.log('bundle patch')
       (plugins ?? []).some((plugin) => plugin?.id === 'ppt-master-skill' && plugin?.name === `${manifest.name}/preset`),
     )
     check('the preset keeps the skill tools', ids.includes('skill-filesystem') && ids.includes('tool-skill'))
+    const subagentRows = flattenPlugins(plugins ?? []).filter(
+      (plugin) => plugin?.id === 'tool-subagent' || plugin?.id === 'tool-subagent-fork',
+    )
+    const removed = subagentRows.flatMap((row) =>
+      ['persona', 'toolFilter', 'backgroundMode']
+        .filter((key) => Object.hasOwn(row?.config ?? {}, key))
+        .map((key) => `${row.id}.${key}`),
+    )
+    check(
+      'subagent rows carry no removed composition keys',
+      subagentRows.length === 2 && removed.length === 0,
+      removed.join(', ') || `found ${subagentRows.length} rows`,
+    )
     const bash = (plugins ?? []).find((plugin) => plugin?.id === 'tool-bash')
     check(
       '!!js conditions survive parsing',
@@ -405,20 +423,39 @@ console.log('environment: the upstream checkout')
     check('the real body carries the facts block', assembled.includes('"python": "C:/x/python.exe"') && assembled.includes('"skillVersion"'))
     const realOff = buildSkillContent(real.body, { ...facts, python: null }, false)
     check('the real body leads with the warning when unconfigured', realOff.startsWith('## ⚠️ Python is not configured'))
+  }
+}
 
-    const standard = findStandardPatch()
-    if (standard === null) {
-      skip('the preset plugin list is still in step with the standard preset', 'no dsh install found')
-    } else {
-      let shippedIds = []
-      try {
-        shippedIds = presetPluginIds(parsePatch(readFileSync(standard, 'utf8')))
-      } catch (cause) {
-        warn('the shipped standard preset could not be parsed', cause.message)
-      }
-      const ourIds = presetPluginIds(patchRows)
-      const missing = shippedIds.filter((id) => !ourIds.includes(id))
-      check('the preset list still covers every standard row', shippedIds.length > 0 && missing.length === 0, missing.join(', ') || 'no rows read')
+console.log('standard preset parity')
+{
+  const standard = findStandardPatch()
+  if (standard === null) {
+    skip('the preset plugin list is still in step with the standard preset', 'no dsh install found')
+  } else {
+    let shipped = null
+    try {
+      shipped = presetPlugins(parsePatch(readFileSync(standard, 'utf8')))
+    } catch (cause) {
+      warn('the shipped standard preset could not be parsed', cause.message)
+    }
+    if (shipped !== null) {
+      const ours = presetPlugins(patchRows)
+      const byId = new Map(ours.map((plugin) => [plugin?.id, plugin]))
+      const comparable = (plugin) =>
+        plugin === undefined ? undefined : { name: plugin.name, disabled: plugin.disabled, config: plugin.config }
+      const drifted = shipped.filter((row) => !isDeepStrictEqual(comparable(byId.get(row?.id)), comparable(row)))
+      check(
+        'every standard preset row is reproduced exactly',
+        shipped.length > 0 && drifted.length === 0,
+        drifted.map((row) => row?.id).join(', ') || 'no rows read',
+      )
+      const shippedIds = new Set(shipped.map((row) => row?.id))
+      const extras = ours.map((plugin) => plugin?.id).filter((id) => !shippedIds.has(id))
+      check(
+        'the preset adds only its own plugin row',
+        isDeepStrictEqual(extras, ['ppt-master-skill']),
+        extras.join(', ') || 'none',
+      )
     }
   }
 }
